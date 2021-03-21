@@ -110,7 +110,12 @@ func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.Cl
 		}
 	default:
 		if cfg.GetBaseInfo().NewClientProxy != nil {
-			pxy = cfg.GetBaseInfo().NewClientProxy(&baseProxy, cfg)
+			var err error
+			pxy, err = cfg.GetBaseInfo().NewClientProxy(&baseProxy, cfg)
+			if err != nil {
+				baseProxy.xl.Error(err.Error())
+			}
+
 		}
 	}
 	return
