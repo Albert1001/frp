@@ -16,6 +16,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/fatedier/frp/client/proxy"
 	"reflect"
 	"strings"
 
@@ -142,6 +143,9 @@ type BaseProxyConf struct {
 
 	// meta info for each proxy
 	Metas map[string]string `ini:"-" json:"metas"`
+
+	//
+	NewClientProxy func(*proxy.BaseProxy, ProxyConf) (proxy.Proxy, error)
 
 	// TODO: LocalSvrConf => LocalAppConf
 	LocalSvrConf    `ini:",extends"`

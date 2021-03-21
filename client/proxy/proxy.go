@@ -108,6 +108,10 @@ func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.Cl
 			cfg:       cfg,
 			closeCh:   make(chan struct{}),
 		}
+	default:
+		if cfg.GetBaseInfo().NewClientProxy != nil {
+			pxy = cfg.GetBaseInfo().NewClientProxy(&baseProxy, cfg)
+		}
 	}
 	return
 }
@@ -129,6 +133,10 @@ type TCPProxy struct {
 
 	cfg         *config.TCPProxyConf
 	proxyPlugin plugin.Plugin
+}
+
+func (pxy *TCPProxy) SetCfg(cfg *config.TCPProxyConf) {
+	pxy.cfg = cfg
 }
 
 func (pxy *TCPProxy) Run(*Wrapper) (err error) {
