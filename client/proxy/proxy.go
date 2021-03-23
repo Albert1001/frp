@@ -44,7 +44,7 @@ import (
 
 // Proxy defines how to handle work connections for different proxy type.
 type Proxy interface {
-	Run(pw *Wrapper) error
+	Run() error
 
 	// InWorkConn accept work connections registered to server.
 	InWorkConn(net.Conn, *msg.StartWorkConn)
@@ -52,7 +52,14 @@ type Proxy interface {
 	Close()
 }
 
-func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.ClientCommonConf, serverUDPPort int) (pxy Proxy) {
+
+var newCustomProxy func(*BaseProxy, config.ProxyConf) (Proxy, error)
+
+func SetNewCustomProxy(f func(*BaseProxy, config.ProxyConf)(Proxy, error)) {
+	newCustomProxy = f
+}
+
+func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.ClientCommonConf, serverUDPPort int, pw *Wrapper) (pxy Proxy) {
 	var limiter *rate.Limiter
 	limitBytes := pxyConf.GetBaseInfo().BandwidthLimit.Bytes()
 	if limitBytes > 0 {
@@ -65,6 +72,7 @@ func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.Cl
 		limiter:       limiter,
 		xl:            xlog.FromContextSafe(ctx),
 		ctx:           ctx,
+		pw: pw,
 	}
 	switch cfg := pxyConf.(type) {
 	case *config.TCPProxyConf:
@@ -108,16 +116,17 @@ func NewProxy(ctx context.Context, pxyConf config.ProxyConf, clientCfg config.Cl
 			cfg:       cfg,
 			closeCh:   make(chan struct{}),
 		}
+
 	default:
-		if cfg.GetBaseInfo().NewClientProxy != nil {
+		if newCustomProxy != nil {
 			var err error
-			pxy, err = cfg.GetBaseInfo().NewClientProxy(&baseProxy, cfg)
+			pxy, err = newCustomProxy(&baseProxy, cfg)
 			if err != nil {
 				baseProxy.xl.Error(err.Error())
 			}
-
 		}
 	}
+
 	return
 }
 
@@ -126,10 +135,14 @@ type BaseProxy struct {
 	clientCfg     config.ClientCommonConf
 	serverUDPPort int
 	limiter       *rate.Limiter
+	pw            *Wrapper
+	mu            sync.RWMutex
+	xl            *xlog.Logger
+	ctx           context.Context
+}
 
-	mu  sync.RWMutex
-	xl  *xlog.Logger
-	ctx context.Context
+func (bp *BaseProxy) GetWrapper() *Wrapper {
+	return bp.pw
 }
 
 // TCP
@@ -144,7 +157,7 @@ func (pxy *TCPProxy) SetCfg(cfg *config.TCPProxyConf) {
 	pxy.cfg = cfg
 }
 
-func (pxy *TCPProxy) Run(*Wrapper) (err error) {
+func (pxy *TCPProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -173,7 +186,7 @@ type TCPMuxProxy struct {
 	proxyPlugin plugin.Plugin
 }
 
-func (pxy *TCPMuxProxy) Run(*Wrapper) (err error) {
+func (pxy *TCPMuxProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -202,7 +215,7 @@ type HTTPProxy struct {
 	proxyPlugin plugin.Plugin
 }
 
-func (pxy *HTTPProxy) Run(*Wrapper) (err error) {
+func (pxy *HTTPProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -231,7 +244,7 @@ type HTTPSProxy struct {
 	proxyPlugin plugin.Plugin
 }
 
-func (pxy *HTTPSProxy) Run(*Wrapper) (err error) {
+func (pxy *HTTPSProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -260,7 +273,7 @@ type STCPProxy struct {
 	proxyPlugin plugin.Plugin
 }
 
-func (pxy *STCPProxy) Run(*Wrapper) (err error) {
+func (pxy *STCPProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -289,7 +302,7 @@ type XTCPProxy struct {
 	proxyPlugin plugin.Plugin
 }
 
-func (pxy *XTCPProxy) Run(*Wrapper) (err error) {
+func (pxy *XTCPProxy) Run() (err error) {
 	if pxy.cfg.Plugin != "" {
 		pxy.proxyPlugin, err = plugin.Create(pxy.cfg.Plugin, pxy.cfg.PluginParams)
 		if err != nil {
@@ -464,7 +477,7 @@ type UDPProxy struct {
 	workConn net.Conn
 }
 
-func (pxy *UDPProxy) Run(*Wrapper) (err error) {
+func (pxy *UDPProxy) Run() (err error) {
 	pxy.localAddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", pxy.cfg.LocalIP, pxy.cfg.LocalPort))
 	if err != nil {
 		return
@@ -586,7 +599,7 @@ type SUDPProxy struct {
 	closeCh chan struct{}
 }
 
-func (pxy *SUDPProxy) Run(*Wrapper) (err error) {
+func (pxy *SUDPProxy) Run() (err error) {
 	pxy.localAddr, err = net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", pxy.cfg.LocalIP, pxy.cfg.LocalPort))
 	if err != nil {
 		return

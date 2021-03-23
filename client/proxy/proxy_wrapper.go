@@ -92,7 +92,7 @@ func NewWrapper(ctx context.Context, cfg config.ProxyConf, clientCfg config.Clie
 		xl.Trace("enable health check monitor")
 	}
 
-	pw.pxy = NewProxy(pw.ctx, pw.Cfg, clientCfg, serverUDPPort)
+	pw.pxy = NewProxy(pw.ctx, pw.Cfg, clientCfg, serverUDPPort, pw)
 	return pw
 }
 
@@ -111,7 +111,7 @@ func (pw *Wrapper) SetRunningStatus(remoteAddr string, respErr string) error {
 		return fmt.Errorf(pw.Err)
 	}
 
-	if err := pw.pxy.Run(nil); err != nil {
+	if err := pw.pxy.Run(); err != nil {
 		pw.close()
 		pw.Phase = ProxyPhaseStartErr
 		pw.Err = err.Error()
